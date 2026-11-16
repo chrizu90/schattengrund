@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0b0c10">
+<meta name="description" content="Schattengrund – ein rundenbasiertes Roguelike. Zehn Ebenen, drei Klassen, jeder Lauf ist anders.">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<title>Schattengrund</title>
+<style>
+@font-face{font-family:"Cinzel";src:url(fonts/cinzel-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+@font-face{font-family:"Plex Mono";src:url(fonts/ibm-plex-mono-latin-400-normal.woff2) format("woff2");font-weight:400;font-display:swap}
+@font-face{font-family:"Plex Mono";src:url(fonts/ibm-plex-mono-latin-700-normal.woff2) format("woff2");font-weight:700;font-display:swap}
+:root{
+  /* Eine Welt: dunkles Gewölbe, Goldakzent. Layout: HUD oben, Spielfeld, Log, Steuerung unten */
+  --bg:#0b0c10; --panel:#14161d; --panel-2:#1b1e27; --line:#2a2e3a; --ink:#e9e4d6; --muted:#8d919e;
+  --accent:#e8c46a; --hp:#d9534f; --xp:#7aa6ff; --good:#8fd18b; --warn:#f0a35a; --bad:#ff7b72;
+  --f-title:"Cinzel",Georgia,"Times New Roman",serif;
+  --f-mono:"Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:var(--f-mono);font-size:14px;overscroll-behavior:none}
+body{touch-action:manipulation;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#app{height:100%;max-width:760px;margin:0 auto;display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+
+/* HUD */
+.hud{display:flex;flex-direction:column;gap:6px;padding:10px 12px 8px}
+.hud-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:13px}
+.hud-row b{color:var(--accent);font-weight:700}
+.hud-left{display:flex;gap:12px;align-items:baseline;min-width:0}
+.hud-left span{white-space:nowrap}
+.bars{display:grid;grid-template-columns:1fr;gap:4px}
+.bar{position:relative;height:16px;background:#1d1f27;border:1px solid var(--line);border-radius:3px;overflow:hidden}
+.bar i{position:absolute;inset:0 auto 0 0;background:linear-gradient(180deg,#e2645f,#a93d3a);transition:width .18s}
+.bar span{position:relative;display:block;text-align:center;font-size:11.5px;line-height:15px;font-weight:700;text-shadow:0 1px 2px #000;font-variant-numeric:tabular-nums}
+.bar.xp{height:5px}
+.bar.xp i{background:var(--xp)}
+.icon-btn{background:none;border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px;color:var(--muted)}
+
+/* Spielfeld */
+.stage{position:relative;flex:1;min-height:160px;overflow:hidden;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.stage canvas{position:absolute;inset:0;display:block;touch-action:none}
+.stage::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 0 rgba(217,83,79,0);transition:box-shadow .25s}
+.stage.hurt::after{box-shadow:inset 0 0 40px 6px rgba(217,83,79,.55);transition:none}
+
+.log{height:76px;padding:6px 12px;display:flex;flex-direction:column;justify-content:flex-end;gap:1px;font-size:12.5px;line-height:1.35;overflow:hidden}
+.log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--muted)}
+.log div.now{color:var(--ink)}
+.log .good{color:var(--good)} .log .bad{color:var(--bad)} .log .warn{color:var(--warn)} .log .info{color:#b9c6e6} .log .gold{color:var(--accent)}
+
+/* Steuerung */
+.controls{display:grid;grid-template-columns:auto 1fr;gap:12px;padding:6px 12px 12px;align-items:stretch}
+.pad{display:grid;grid-template-columns:repeat(3,54px);grid-template-rows:repeat(3,54px);gap:5px}
+.pad button{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;font-size:20px;color:#c9c4b6;display:grid;place-items:center}
+.pad button:active,.acts button:active{background:#262a36}
+.pad .c{font-size:12px;color:var(--muted)}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.acts button{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;min-height:54px}
+.acts button small{font-size:11px;color:var(--muted)}
+.acts .ability{grid-column:1/-1;border-color:#5a4a26;background:linear-gradient(180deg,#262116,#1b1810)}
+.acts .ability.ready{border-color:var(--accent)}
+.acts .ability.ready small{color:var(--accent)}
+.acts button:disabled{opacity:.35}
+.acts .stairs.on{border-color:var(--accent);color:var(--accent)}
+@media (max-width:360px){.pad{grid-template-columns:repeat(3,46px);grid-template-rows:repeat(3,46px)}}
+@media (min-width:700px){.log{height:92px}}
+
+/* Overlays */
+.overlay{position:fixed;inset:0;background:rgba(5,6,9,.82);display:flex;align-items:flex-start;justify-content:center;overflow-y:auto;z-index:10;
+  padding:calc(env(safe-area-inset-top) + 20px) 14px calc(env(safe-area-inset-bottom) + 20px)}
+.overlay[hidden]{display:none}
+.panel{width:100%;max-width:560px;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:16px}
+.panel h2{font-family:var(--f-title);font-weight:700;font-size:22px;letter-spacing:.04em;margin:0;color:var(--accent)}
+.panel h3{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0;font-weight:700}
+.panel p{margin:0;color:#c9c4b6;line-height:1.55;font-size:13.5px}
+.row-btns{display:flex;gap:8px;flex-wrap:wrap}
+.btn{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:11px 16px;font-weight:700;font-size:14px}
+.btn.primary{background:var(--accent);color:#1a1405;border-color:var(--accent)}
+.btn.wide{width:100%}
+.btn:disabled{opacity:.4}
+
+.title-screen{max-width:520px;text-align:center;align-items:stretch;background:radial-gradient(120% 80% at 50% 0%,#1d1a12 0%,var(--panel) 60%)}
+.title-screen h1{font-family:var(--f-title);font-size:clamp(26px,8vw,48px);letter-spacing:.03em;margin:8px 0 0;color:var(--accent);line-height:1;text-shadow:0 0 30px rgba(232,196,106,.25)}
+.title-screen .sub{color:var(--muted);font-size:13px}
+.glyphline{font-size:20px;letter-spacing:.4em;color:#5d6170;margin:4px 0}
+.glyphline em{font-style:normal;color:var(--accent)}
+.menu{display:flex;flex-direction:column;gap:8px}
+
+.classes{display:grid;gap:10px}
+.cls{text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px;display:grid;grid-template-columns:44px 1fr;gap:4px 12px;align-items:center}
+.cls:hover{border-color:var(--accent)}
+.cls .g{grid-row:1/3;font-size:30px;font-weight:700;text-align:center}
+.cls b{font-family:var(--f-title);font-size:17px;letter-spacing:.03em}
+.cls span{color:var(--muted);font-size:12.5px;line-height:1.45}
+.cls .st{grid-column:2;font-size:11.5px;color:#a9a497}
+.seed-row{display:flex;gap:8px;align-items:center}
+.seed-row input{flex:1;background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:9px 10px;color:var(--ink);font:inherit}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.stat{background:var(--panel-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.stat small{display:block;color:var(--muted);font-size:11px}
+.stat b{font-size:16px;font-variant-numeric:tabular-nums}
+.inv{display:flex;flex-direction:column;gap:6px}
+.inv-item{display:grid;grid-template-columns:28px 1fr;gap:10px;align-items:center;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.inv-item .g{font-size:20px;font-weight:700;text-align:center}
+.inv-item small{display:block;color:var(--muted);font-size:11.5px}
+.inv-item .b{display:flex;gap:6px;grid-column:2}
+.inv-item .b button{background:#242836;border:1px solid var(--line);border-radius:8px;padding:7px 10px;font-size:12.5px;font-weight:700}
+.perks{display:grid;gap:10px}
+.perk{text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.perk:hover{border-color:var(--accent)}
+.perk b{display:block;font-family:var(--f-title);font-size:16px;color:var(--accent);margin-bottom:3px}
+.perk span{color:#c9c4b6;font-size:13px}
+.tags{display:flex;flex-wrap:wrap;gap:6px}
+.tags span{border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:12px;color:#c9c4b6}
+.scores{width:100%;border-collapse:collapse;font-size:12.5px;font-variant-numeric:tabular-nums}
+.scores td,.scores th{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left}
+.scores th{color:var(--muted);font-weight:400;font-size:11.5px}
+.scores td:first-child{color:var(--accent);font-weight:700}
+.mapcv{width:100%;border:1px solid var(--line);border-radius:8px;background:#07080b;image-rendering:pixelated}
+.help li{margin:0 0 6px;color:#c9c4b6;font-size:13px;line-height:1.5}
+.help{padding-left:18px;margin:0}
+.kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:11.5px;color:var(--ink)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="hud">
+    <div class="hud-row">
+      <div class="hud-left"><b id="hName">Schattengrund</b><span id="hDepth"></span><span id="hGold"></span></div>
+      <button class="icon-btn" id="btnMenu" type="button" aria-label="Menü">Menü</button>
+    </div>
+    <div class="bars">
+      <div class="bar" aria-label="Lebenspunkte"><i id="hpFill" style="width:100%"></i><span id="hpText">–</span></div>
+      <div class="bar xp" aria-label="Erfahrung"><i id="xpFill" style="width:0%"></i></div>
+    </div>
+  </header>
+
+  <div class="stage" id="stage"><canvas id="cv"></canvas></div>
+  <div class="log" id="log" aria-live="polite"></div>
+
+  <nav class="controls" aria-label="Steuerung">
+    <div class="pad" id="pad">
+      <button type="button" data-d="-1,-1" aria-label="nach links oben">↖</button>
+      <button type="button" data-d="0,-1" aria-label="nach oben">↑</button>
+      <button type="button" data-d="1,-1" aria-label="nach rechts oben">↗</button>
+      <button type="button" data-d="-1,0" aria-label="nach links">←</button>
+      <button type="button" data-d="0,0" class="c" aria-label="Warten">warten</button>
+      <button type="button" data-d="1,0" aria-label="nach rechts">→</button>
+      <button type="button" data-d="-1,1" aria-label="nach links unten">↙</button>
+      <button type="button" data-d="0,1" aria-label="nach unten">↓</button>
+      <button type="button" data-d="1,1" aria-label="nach rechts unten">↘</button>
+    </div>
+    <div class="acts">
+      <button type="button" class="ability" id="btnAbility"><span id="abName">Fähigkeit</span><small id="abCd">bereit</small></button>
+      <button type="button" id="btnInv"><span>Taschen</span><small id="invCount">0/10</small></button>
+      <button type="button" id="btnMap"><span>Karte</span><small>Übersicht</small></button>
+      <button type="button" class="stairs" id="btnStairs" style="grid-column:1/-1" disabled><span>Hinab</span><small id="stairsHint">keine Treppe</small></button>
+    </div>
+  </nav>
+</div>
+
+<div class="overlay" id="overlay" hidden><div class="panel" id="panel"></div></div>
+
+<script src="logic.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
